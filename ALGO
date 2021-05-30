@@ -3,15 +3,15 @@ PLAYER:
 	loop:
 		wait for rcv
 		get the ball
-		set the src
-		set the height of ball (your height + random)
-		set the dest (random)
+		set the src = self()
+		set the height of ball = self()->height + random
+		set the dest = players[random] (!= SEEKER && != self())
 		initialize rcv
 
 SEEKER:
 	initialize rcv
-	this.skcnt++;
-	if skcnt == 5:
+	self()->skcnt++;
+	if self()->skcnt == 5:
 		notify end_game
 		pthread_exit()
 	loop:
@@ -19,9 +19,9 @@ SEEKER:
 		see the ball
 		try to catch it
 		if catched:
-			pthread_cancel(ball.src.thread)
-			ball.src.thread <-- pthread_create(SEEKER)
-			this.thread <-- pthread_create(PLAYER)
+			pthread_cancel(ball->src->thread)
+			pthread_create(&(ball->src->thread), seek)
+			pthread_create(&(self()->thread), play)
 			pthread_exit()
 		initialize rcv
 

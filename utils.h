@@ -3,6 +3,7 @@
 
 #include <pthread.h>
 #include <stdbool.h>
+#include <unistd.h>
 
 #define N_PLAYERS 4
 
@@ -22,7 +23,17 @@ typedef struct ball
 } * ball_t;
 
 player_t PLAYERS[N_PLAYERS]; /* list of players descriptors */
+player_t SEEKER;	     /* seeker descriptor */
 ball_t BALL;		     /* ball's descriptor */
 pthread_cond_t end_game;     /* indicates game end */
+
+/* to return the player's descriptor given the thread */
+player_t get_player(pthread_t);
+
+/* to return the player's descriptor of the current thread */
+player_t self();
+
+/* to return a random destination */
+player_t random_dest();
 
 #endif /* __UTILS_H__ */
