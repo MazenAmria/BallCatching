@@ -10,15 +10,21 @@ PLAYER:
 
 SEEKER:
 	initialize rcv
+	this.skcnt++;
+	if skcnt == 5:
+		notify end_game
+		pthread_exit()
 	loop:
 		wait for rcv
 		see the ball
 		try to catch it
 		if catched:
-			/* swap thrower and seeker */
 			pthread_cancel(ball.src.thread)
-			thread = pthread_create(seeker)
-			seeker.thread = thread
-			src.thread = pthread_self()
-			be the player
+			ball.src.thread <-- pthread_create(SEEKER)
+			this.thread <-- pthread_create(PLAYER)
+			pthread_exit()
 		initialize rcv
+
+MAIN:
+	wait for end_game
+	exit()
