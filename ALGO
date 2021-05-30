@@ -5,7 +5,8 @@ PLAYER:
 		get the ball
 		set the src = self()
 		set the height of ball = self()->height + random
-		set the dest = players[random] (!= SEEKER && != self())
+		set the dest = random_dest()
+		notify SEEKER
 		initialize rcv
 
 SEEKER:
@@ -26,5 +27,10 @@ SEEKER:
 		initialize rcv
 
 MAIN:
+	create_threads()
+		- cancel_status = enable
+	initialize PLAYERS
+	initialize SEEKER
+	initialize BALL
 	wait for end_game
 	exit()
