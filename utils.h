@@ -15,11 +15,9 @@ typedef struct player
 
 typedef struct ball
 {
-	player_t src;	     /* the player that throws the ball */
-	player_t dest;	     /* the player that the ball thrown to */
-	pthread_cond_t seen; /* indicates that the ball has been seen by the seeker */
-	int height;	     /* height of the ball */
-	bool skd;	     /* indicates that ball has been seeked */
+	player_t src;  /* the player that throws the ball */
+	player_t dest; /* the player that the ball thrown to */
+	int height;    /* height of the ball */
 } * ball_t;
 
 typedef player_t seeker_t;
