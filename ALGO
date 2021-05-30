@@ -1,0 +1,28 @@
+PLAYER:
+	loop:
+		wait for rcv
+		get the ball
+		set the src
+		set the height of ball (your height + random)
+		set the src (random)
+		initialize seen
+		initialize rcv
+		notify seeker.rcv
+		wait for ball.seen
+		if skd:
+			be the seeker
+
+SEEKER:
+	loop:
+		wait for rcv
+		see the ball
+		try to catch it
+		if catched:
+			set skd
+			notify ball.seen
+			be the player
+		else:
+			unset skd
+			notify ball.seen
+		initialize rcv
+		notify dest.rcv
