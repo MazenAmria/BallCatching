@@ -12,9 +12,8 @@ PLAYER:
 SEEKER:
 	initialize rcv
 	self()->skcnt++;
-	if self()->skcnt == 5:
-		notify end_game
-		pthread_exit()
+	notify skcnt_mod
+	acquire skcnt_mutex
 	loop:
 		wait for rcv
 		see the ball
@@ -23,6 +22,7 @@ SEEKER:
 			pthread_cancel(ball->src->thread)
 			pthread_create(&(ball->src->thread), seek)
 			pthread_create(&(self()->thread), play)
+			release skcnt_mutex
 			pthread_exit()
 		initialize rcv
 
@@ -32,5 +32,5 @@ MAIN:
 	initialize PLAYERS
 	initialize SEEKER
 	initialize BALL
-	wait for end_game
+	wait for skcnt == 5
 	exit()
