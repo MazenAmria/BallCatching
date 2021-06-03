@@ -1,10 +1,10 @@
 CC=gcc
 
-all: main utils
-	$(CC) main utils -o game
+all: utils.o main.o
+	$(CC) utils.o main.o -o game -lpthread
 
-%: %.c
+%.o: %.c
 	$(CC) -c $< -g -o $@
 
 clean:
-	rm -f main utils game
+	rm -f main.o utils.o game
