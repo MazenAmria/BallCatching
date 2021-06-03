@@ -26,6 +26,7 @@ int main(int argc, char **argv)
 
 	/* create the ball object */
 	BALL = (ball_t)malloc(sizeof(struct ball));
+	
 
 	/* signal P1 to start playing */
 	pthread_cond_signal(&(PLAYERS[0]->rcv));
@@ -45,4 +46,61 @@ int main(int argc, char **argv)
 
 	/* terminate */
 	exit(0);
+}
+void *seek(void * a){
+	//what do you mean by intialize rcv ?
+	pthread_cond_init(&(SEEKER->rcv), NULL);
+	// increase seeker count 
+	SEEKER->skcnt = SEEKER->skcnt ++ ; 
+	//notify sknt_mod 
+	pthread_cond_broadcast(&skcnt_mod);
+	// acquire sknt_mutex  
+	pthread_mutex_lock(&skcnt_mutex);
+	while (1)
+	{
+		//wait for rcv
+		pthread_cond_wait(&SEEKER->rcv,&skcnt_mutex);
+		//try to catch 
+		int catch = catched(SEEKER->height , BALL->height);
+		if(catch){
+			//if the seeker cathc the ball then 
+			// 1- destroy the src thread beacuse it will be seeker
+			pthread_t src_th = BALL->src->thread;
+			pthread_cancel(src_th);
+			//2- make the src as seeker 
+			pthread_attr_t attr;
+			pthread_attr_init(&attr);
+			pthread_attr_setcancelstate(&attr, PTHREAD_CANCEL_ENABLE);
+			pthread_create(&(src_th), &attr, seek, NULL);
+			//3 - make seeker as player 
+			pthread_create(&(self()->thread), &attr, play, NULL);
+			// 4- release the sknt-mutex to the another seeker 
+			pthread_mutex_unlock(&skcnt_mutex);
+			//5 - exit 
+			pthread_exit(5);
+		}
+		pthread_cond_init(&(SEEKER->rcv), NULL);
+
+	}
+
+}
+int catched (int seeker_hight , int ball_hight){
+	// seeker jump or not ? 
+	int jump =0; 
+	int h =seeker_hight ; 
+	if( rand()/2 ==0 ) { //if even number then jump 
+		jump = 1; 
+	}
+
+	if (jump){
+		//hight + jump between 10-50
+		h = seeker_hight + ( rand() % 50 + 10 ) ;
+	}
+
+	if (h > ball_hight){
+		return 1 ;
+	}
+	else{
+		return 0 ; 
+	}
 }
