@@ -48,8 +48,65 @@ void create_player(player_t *p, pthread_attr_t *attr, void *(*starting_routine)(
 
 void destroy_player(player_t p)
 {
-	pthread_cancel(p->thread);
+	wait_rdy(p);
+	signal_snd(p, EXIT_THRD);
 	pthread_mutex_destroy(&(p->rcv_mutex));
 	pthread_cond_destroy(&(p->rcv_cond));
+	pthread_mutex_destroy(&(p->rdy_mutex));
+	pthread_cond_destroy(&(p->rdy_cond));
 	free(p);
+}
+
+void wait_rdy(player_t p)
+{
+	pthread_mutex_lock(&(p->rdy_mutex));
+	while (!(p->rdy))
+		pthread_cond_wait(&(p->rdy_cond), &(p->rdy_mutex));
+	pthread_mutex_unlock(&(p->rdy_mutex));
+}
+
+void wait_rcv(player_t p)
+{
+	pthread_mutex_lock(&(p->rcv_mutex));
+	while (!(p->rcv))
+		pthread_cond_wait(&(p->rcv_cond), &(p->rcv_mutex));
+	pthread_mutex_unlock(&(p->rcv_mutex));
+}
+
+void reset_rdy(player_t p)
+{
+	pthread_mutex_lock(&(p->rdy_mutex));
+	p->rdy = 0;
+	pthread_mutex_unlock(&(p->rdy_mutex));
+}
+
+void reset_rcv(player_t p)
+{
+	pthread_mutex_lock(&(p->rcv_mutex));
+	p->rcv = 0;
+	pthread_mutex_unlock(&(p->rcv_mutex));
+}
+
+unsigned int test_rcv(player_t p, unsigned int expected)
+{
+	pthread_mutex_lock(&(p->rcv_mutex));
+	unsigned int cond = (p->rcv == expected);
+	pthread_mutex_unlock(&(p->rcv_mutex));
+	return cond;
+}
+
+void signal_snd(player_t p, unsigned int signum)
+{
+	pthread_mutex_lock(&(p->rcv_mutex));
+	p->rcv = signum;
+	pthread_cond_signal(&(p->rcv_cond));
+	pthread_mutex_unlock(&(p->rcv_mutex));
+}
+
+void announce_rdy(player_t p)
+{
+	pthread_mutex_lock(&(p->rdy_mutex));
+	p->rdy = 1;
+	pthread_cond_broadcast(&(p->rdy_cond));
+	pthread_mutex_unlock(&(p->rdy_mutex));
 }

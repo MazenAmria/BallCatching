@@ -5,11 +5,14 @@ void *seek(void *);
 
 void *play(void *);
 
-player_t *PLAYERS;	     /* list of players descriptors */
-player_t SEEKER;	     /* seeker descriptor */
-ball_t BALL;		     /* ball's descriptor */
-pthread_mutex_t skcnt_mutex; /* mutex lock for current seeker seek count */
-pthread_cond_t skcnt_mod;    /* indicates seek count of the seeker has been modified */
+player_t *PLAYERS;	       /* list of players descriptors */
+player_t SEEKER;	       /* seeker descriptor */
+ball_t BALL;		       /* ball's descriptor */
+pthread_mutex_t skcnt_mutex;   /* mutex lock for current seeker seek count */
+pthread_cond_t skcnt_mod;      /* indicates seek count of the seeker has been modified */
+unsigned int new_rnd;	       /* indecates that players can play new round */
+pthread_mutex_t new_rnd_mutex; /* mutex lock for current seeker seek count */
+pthread_cond_t new_rnd_cond;   /* indicates seek count of the seeker has been modified */
 
 int main(int argc, char **argv)
 {
@@ -17,7 +20,9 @@ int main(int argc, char **argv)
 	PLAYERS = (player_t *)malloc(N_PLAYERS * sizeof(player_t));
 	pthread_mutex_init(&skcnt_mutex, NULL);
 	pthread_cond_init(&skcnt_mod, NULL);
-	pthread_mutex_lock(&skcnt_mutex);
+	new_rnd = 0;
+	pthread_mutex_init(&new_rnd_mutex, NULL);
+	pthread_cond_init(&new_rnd_cond, NULL);
 	srand(time(NULL));
 
 	/* attributes with cancel enable used for creating threads */
@@ -35,107 +40,149 @@ int main(int argc, char **argv)
 	/* create the ball object */
 	BALL = (ball_t)malloc(sizeof(struct ball));
 
-	/* signal P1 to start playing */
-	pthread_mutex_lock(&(PLAYERS[0]->rcv_mutex));
-	PLAYERS[0]->rcv = 1;
-	pthread_cond_signal(&(PLAYERS[0]->rcv_cond));
-	pthread_mutex_unlock(&(PLAYERS[0]->rcv_mutex));
+	/* allow new round */
+	pthread_mutex_lock(&new_rnd_mutex);
+	new_rnd = 1;
+	pthread_cond_signal(&new_rnd_cond);
+	pthread_mutex_unlock(&new_rnd_mutex);
 
-	/* wait for any modification on seek count */
-	while (SEEKER->skcnt < 5)
+	/* wait for all players to be ready */
+	for (unsigned int i = 0; i < N_PLAYERS; ++i)
+		wait_rdy(PLAYERS[i]);
+
+	/* send P0 ball recieved signal to start playing */
+	signal_snd(PLAYERS[0], BALL_RCVD);
+
+	/* wait for seek count to reach MAX_SKCNT */
+	pthread_mutex_lock(&skcnt_mutex);
+	if (SEEKER->skcnt < MAX_SKCNT)
 		pthread_cond_wait(&skcnt_mod, &skcnt_mutex);
+	while (SEEKER->skcnt < MAX_SKCNT)
+	{
+		/* allow new round */
+		pthread_mutex_lock(&new_rnd_mutex);
+		new_rnd = 1;
+		pthread_cond_signal(&new_rnd_cond);
+		pthread_mutex_unlock(&new_rnd_mutex);
+
+		/* wait for another modification */
+		pthread_cond_wait(&skcnt_mod, &skcnt_mutex);
+	}
+
+	printf("=============== GAME OVER ===============\n");
 
 	/* destroy players and their resources */
 	for (unsigned int i = 0; i < N_PLAYERS; ++i)
-		destroy_player(PLAYERS[i]);
+		if (PLAYERS[i] != SEEKER)
+			destroy_player(PLAYERS[i]);
+
+	/* to free the SEEKER */
+	pthread_mutex_lock(&new_rnd_mutex);
+	new_rnd = 1;
+	pthread_cond_signal(&new_rnd_cond);
+	pthread_mutex_unlock(&new_rnd_mutex);
+
+	/* destroy the SEEKER */
+	destroy_player(SEEKER);
 
 	/* destroy global resources */
 	pthread_mutex_destroy(&skcnt_mutex);
 	pthread_cond_destroy(&skcnt_mod);
+	pthread_mutex_destroy(&new_rnd_mutex);
+	pthread_cond_destroy(&new_rnd_cond);
 
 	/* terminate */
 	exit(0);
 }
 void *seek(void *args)
 {
-start_seeking:
-	// acquire skcnt_mutex
+	/* increment the seek count */
 	pthread_mutex_lock(&skcnt_mutex);
-
-	// increase seeker count
 	SEEKER->skcnt++;
-
-	// notify sknt_mod
 	pthread_cond_signal(&skcnt_mod);
-
-	// unlock skcnt_mutex
 	pthread_mutex_unlock(&skcnt_mutex);
+
+	/* wait for main to allow new round */
+	pthread_mutex_lock(&new_rnd_mutex);
+	while (!(new_rnd))
+		pthread_cond_wait(&new_rnd_cond, &new_rnd_mutex);
+	new_rnd = 0;
+	pthread_mutex_unlock(&new_rnd_mutex);
 
 	while (1)
 	{
-		// lock the mutex
-		pthread_mutex_lock(&(SEEKER->rcv_mutex));
+		/* announce that seeker is ready */
+		announce_rdy(SEEKER);
 
-		// consider seeker to be ready
-		pthread_mutex_lock(&(SEEKER->rdy_mutex));
-		SEEKER->rdy = 1;
-		pthread_cond_signal(&(SEEKER->rdy_cond));
-		pthread_mutex_unlock(&(SEEKER->rdy_mutex));
+		/* wait for recieved signals */
+		wait_rcv(SEEKER);
 
-		// wait for rcv
-		while (!(SEEKER->rcv))
-			pthread_cond_wait(&(SEEKER->rcv_cond), &(SEEKER->rcv_mutex));
-
-		// unlock the mutex
-		pthread_mutex_unlock(&(SEEKER->rcv_mutex));
-
-		// jump (or not, randomly) with random height [10, 50]
-		unsigned int jump_height = (rand() % 2) * (rand() % 41 + 10);
-
-		// try to catch
-		if (SEEKER->height + jump_height >= BALL->height)
+		/* check if it's EXIT signal */
+		if (test_rcv(SEEKER, EXIT_THRD))
 		{
-			SEEKER->rdy = 0;
-			BALL->src->rdy = 0;
-
-			// trace the ball
-			printf("[SEEKER]: Catched it");
-			if (jump_height)
-				printf(" while jumping\n");
-			else
-				printf("\n");
-
-			// swap threads
-			pthread_t tmp = SEEKER->thread;
-			SEEKER->thread = BALL->src->thread;
-			BALL->src->thread = tmp;
-
-			// assign it to be the new seeker
-			SEEKER = BALL->src;
-
-			// reset the seeker
-			goto start_seeking;
+			announce_rdy(SEEKER);
+			pthread_exit(0);
 		}
 
-		// reset the rcv variable
-		self()->rcv = 0;
+		/* jump (or not, randomly) with random height [10, 50] */
+		unsigned int jump_height = (rand() % 2) * (rand() % 41 + 10);
 
-		// trace the ball
-		printf("[SEEKER]: Coudln't catch it\n");
+		/* try to catch the ball */
+		if (SEEKER->height + jump_height >= BALL->height)
+		{
+			/* trace the ball */
+			printf("[SEEKER]: Catched it");
+			if (jump_height)
+				printf(" while jumping\n\n");
+			else
+				printf("\n\n");
 
-		// wait for the dest to be ready
-		while (!(BALL->dest))
-			;
-		pthread_mutex_lock(&(BALL->dest->rdy_mutex));
-		while (!(BALL->dest->rdy))
-			pthread_cond_wait(&(BALL->dest->rdy_cond), &(BALL->dest->rdy_mutex));
-		pthread_mutex_unlock(&(BALL->dest->rdy_mutex));
+			/* wait for thrower to be ready */
+			wait_rdy(BALL->src);
 
-		// notify dest that it recieved the ball
-		pthread_mutex_lock(&(BALL->dest->rcv_mutex));
-		BALL->dest->rcv = 1;
-		pthread_cond_signal(&(BALL->dest->rcv_cond));
-		pthread_mutex_unlock(&(BALL->dest->rcv_mutex));
+			/* send exit request to that player */
+			reset_rdy(BALL->src);
+			signal_snd(BALL->src, EXIT_THRD);
+			wait_rdy(BALL->src);
+
+			/* reset the flags for both thrower and seeker */
+			reset_rdy(BALL->src);
+			reset_rcv(BALL->src);
+			reset_rdy(SEEKER);
+			reset_rcv(SEEKER);
+
+			/* swap players */
+			player_t old_skr = SEEKER;
+			SEEKER = BALL->src;
+
+			/* reset threads */
+			pthread_attr_t attr;
+			pthread_attr_init(&attr);
+			pthread_create(&(SEEKER->thread), &attr, &seek, NULL);
+			pthread_create(&(old_skr->thread), &attr, &play, NULL);
+
+			/* wait for newly created threads to get ready */
+			wait_rdy(SEEKER);
+			wait_rdy(old_skr);
+
+			/* send the old seeker signal that he has the ball */
+			signal_snd(old_skr, BALL_RCVD);
+
+			/* exit the current thread */
+			pthread_exit(0);
+		}
+
+		/* reset the rcv variable */
+		reset_rcv(SEEKER);
+
+		/* trace the ball */
+		printf("[SEEKER]: Coudln't catch it\n\n");
+
+		/* wait for the dest to be ready */
+		wait_rdy(BALL->dest);
+
+		/* notify dest that it recieved the ball */
+		signal_snd(BALL->dest, BALL_RCVD);
 	}
 }
 
@@ -143,35 +190,29 @@ void *play(void *args)
 {
 	while (1)
 	{
-		// lock the mutex
-		pthread_mutex_lock(&(self()->rcv_mutex));
+		/* announce that player is ready */
+		announce_rdy(self());
 
-		// consider player to be ready
-		pthread_mutex_lock(&(self()->rdy_mutex));
-		self()->rdy = 1;
-		pthread_cond_signal(&(self()->rdy_cond));
-		pthread_mutex_unlock(&(self()->rdy_mutex));
+		/* wait for recieved signals */
+		wait_rcv(self());
 
-		// wait for rcv
-		while (!(self()->rcv))
-			pthread_cond_wait(&(self()->rcv_cond), &(self()->rcv_mutex));
+		/* check if it's EXIT signal */
+		if (test_rcv(self(), EXIT_THRD))
+		{
+			announce_rdy(self());
+			pthread_exit(0);
+		}
 
-		// unlock the mutex
-		pthread_mutex_unlock(&(self()->rcv_mutex));
-
+		/* trace the ball */
 		printf("[P%d]: Recieved the ball\n", get_index(self()->thread));
 
-		// set itself as a source (thrower) of the ball
-		BALL->src = self();
-
-		// set a random destination
-		BALL->dest = random_dest();
-
-		// define jump
-		unsigned int j = rand() % 2;
+		/* set the ball parameters */
+		BALL->src = self();	     /* you're the thrower */
+		BALL->dest = random_dest();  /* choose random target */
+		unsigned int j = rand() % 2; /* you may jump or not */
 		BALL->height = self()->height + (rand() % 241 + 10) + (rand() % 41 + 10) * j;
 
-		// trace the ball
+		/* trace the ball */
 		printf("[P%d]: Threw the ball to P%d at height %d",
 		       get_index(self()->thread),
 		       get_index(BALL->dest->thread),
@@ -181,21 +222,13 @@ void *play(void *args)
 		else
 			printf("\n");
 
-		// reset the rcv variable
-		self()->rcv = 0;
+		/* reset the rcv variable */
+		reset_rcv(self());
 
-		// wait for the seeker to be ready
-		while (!(SEEKER))
-			;
-		pthread_mutex_lock(&(SEEKER->rdy_mutex));
-		while (!(SEEKER->rdy))
-			pthread_cond_wait(&(SEEKER->rdy_cond), &(SEEKER->rdy_mutex));
-		pthread_mutex_unlock(&(SEEKER->rdy_mutex));
+		/* wait for the seeker to be ready */
+		wait_rdy(SEEKER);
 
-		// notify the seeker
-		pthread_mutex_lock(&(SEEKER->rcv_mutex));
-		SEEKER->rcv = 1;
-		pthread_cond_signal(&(SEEKER->rcv_cond));
-		pthread_mutex_unlock(&(SEEKER->rcv_mutex));
+		/* notify the seeker that the ball has been thrown */
+		signal_snd(SEEKER, BALL_THRW);
 	}
 }

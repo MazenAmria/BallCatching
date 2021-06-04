@@ -6,6 +6,10 @@
 #include <unistd.h>
 
 #define N_PLAYERS 4
+#define BALL_RCVD 1
+#define BALL_THRW 1
+#define EXIT_THRD 2
+#define MAX_SKCNT 5
 
 typedef struct player
 {
@@ -50,5 +54,24 @@ void create_player(player_t *, pthread_attr_t *, void *(*)(void *));
 
 /* to destroy a player and his resources */
 void destroy_player(player_t);
+
+/* to wait for a player to be ready */
+void wait_rdy(player_t);
+
+/* to wait for any recieved signals */
+void wait_rcv(player_t);
+
+/* to reset condition variables */
+void reset_rdy(player_t);
+void reset_rcv(player_t);
+
+/* atomically test the recieved signal */
+unsigned int test_rcv(player_t, unsigned int);
+
+/* to send a player specific signal */
+void signal_snd(player_t, unsigned int);
+
+/* to announce that the player is ready */
+void announce_rdy(player_t);
 
 #endif /* __UTILS_H__ */

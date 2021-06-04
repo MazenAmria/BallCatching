@@ -1,6 +1,0 @@
-{
-	"files.associations": {
-		"mutex": "c",
-		"condition_variable": "c"
-	}
-}
