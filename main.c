@@ -50,6 +50,8 @@ int main(int argc, char **argv)
 	for (unsigned int i = 0; i < N_PLAYERS; ++i)
 		wait_rdy(PLAYERS[i]);
 
+	printf("=============== FIRST ROUND ===============\n");
+
 	/* send P0 ball recieved signal to start playing */
 	signal_snd(PLAYERS[0], BALL_RCVD);
 
@@ -59,6 +61,8 @@ int main(int argc, char **argv)
 		pthread_cond_wait(&skcnt_mod, &skcnt_mutex);
 	while (SEEKER->skcnt < MAX_SKCNT)
 	{
+		printf("=============== NEW ROUND ===============\n");
+
 		/* allow new round */
 		pthread_mutex_lock(&new_rnd_mutex);
 		new_rnd = 1;
