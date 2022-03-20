@@ -7,4 +7,4 @@ all: utils.o main.o
 	$(CC) -c $< -g -o $@
 
 clean:
-	rm -f main.o utils.o game
+	rm -f *.o game
